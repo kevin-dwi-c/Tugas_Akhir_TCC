@@ -15,14 +15,16 @@ type App struct {
 	cfg     Config
 	store   *Store
 	logger  *slog.Logger
+	fcm     *FCMClient
 	limiter *broadcastLimiter
 }
 
-func New(cfg Config, store *Store, logger *slog.Logger) *App {
+func New(cfg Config, store *Store, logger *slog.Logger, fcm *FCMClient) *App {
 	return &App{
 		cfg:     cfg,
 		store:   store,
 		logger:  logger,
+		fcm:     fcm,
 		limiter: newBroadcastLimiter(10, time.Minute),
 	}
 }
@@ -73,6 +75,9 @@ func (a *App) routeProtected(w http.ResponseWriter, r *http.Request, path string
 	segments := splitPath(path)
 
 	switch {
+	case r.Method == http.MethodGet && path == "/auth/me":
+		a.handleMe(w, r)
+
 	case r.Method == http.MethodGet && path == "/stock":
 		a.handleListStock(w, r)
 	case r.Method == http.MethodPut && len(segments) == 3 && segments[0] == "stock":
@@ -161,12 +166,25 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 	ok(w, map[string]interface{}{"token": token, "user": admin}, http.StatusOK)
 }
 
+func (a *App) handleMe(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
+	ok(w, adminFromContext(r.Context()), http.StatusOK)
+}
+
 func (a *App) handleListStock(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	stock, err := a.store.ListStock(r.Context())
 	a.respond(w, stock, err, http.StatusOK)
 }
 
 func (a *App) handleUpdateStock(w http.ResponseWriter, r *http.Request, bloodType, productType string) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	var input StockUpdateRequest
 	if err := decodeJSON(r, &input); err != nil {
 		fail(w, http.StatusBadRequest, "BAD_REQUEST", "Body update stok tidak valid.")
@@ -178,11 +196,17 @@ func (a *App) handleUpdateStock(w http.ResponseWriter, r *http.Request, bloodTyp
 }
 
 func (a *App) handleListRequests(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	requests, err := a.store.ListRequests(r.Context())
 	a.respond(w, requests, err, http.StatusOK)
 }
 
 func (a *App) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	var input EmergencyCreateRequest
 	if err := decodeJSON(r, &input); err != nil {
 		fail(w, http.StatusBadRequest, "BAD_REQUEST", "Body permintaan darurat tidak valid.")
@@ -194,6 +218,9 @@ func (a *App) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleEligibleDonors(w http.ResponseWriter, r *http.Request, requestID string) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	request, err := a.store.GetRequest(r.Context(), requestID)
 	if err != nil {
 		a.respond(w, nil, err, http.StatusOK)
@@ -213,6 +240,9 @@ func (a *App) handleEligibleDonors(w http.ResponseWriter, r *http.Request, reque
 }
 
 func (a *App) handleBroadcast(w http.ResponseWriter, r *http.Request, requestID string) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	admin := adminFromContext(r.Context())
 	limitKey := admin.ID
 	if limitKey == "" {
@@ -223,26 +253,38 @@ func (a *App) handleBroadcast(w http.ResponseWriter, r *http.Request, requestID 
 		return
 	}
 
-	result, err := a.store.BroadcastRequest(r.Context(), requestID)
+	result, err := a.store.BroadcastRequest(r.Context(), requestID, a.fcm)
 	a.respond(w, result, err, http.StatusOK)
 }
 
 func (a *App) handleLiveResponses(w http.ResponseWriter, r *http.Request, requestID string) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	responses, err := a.store.ListLiveResponses(r.Context(), requestID)
 	a.respond(w, responses, err, http.StatusOK)
 }
 
 func (a *App) handleListDonors(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	donors, err := a.store.ListDonors(r.Context(), r.URL.Query().Get("search"))
 	a.respond(w, donors, err, http.StatusOK)
 }
 
 func (a *App) handleGetDonor(w http.ResponseWriter, r *http.Request, key string) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	donor, err := a.store.GetDonor(r.Context(), key)
 	a.respond(w, donor, err, http.StatusOK)
 }
 
 func (a *App) handleCreateDonor(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	var input DonorCreateRequest
 	if err := decodeJSON(r, &input); err != nil {
 		fail(w, http.StatusBadRequest, "BAD_REQUEST", "Body pendonor tidak valid.")
@@ -253,6 +295,9 @@ func (a *App) handleCreateDonor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleUpdateDonor(w http.ResponseWriter, r *http.Request, id string) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	var input DonorUpdateRequest
 	if err := decodeJSON(r, &input); err != nil {
 		fail(w, http.StatusBadRequest, "BAD_REQUEST", "Body update pendonor tidak valid.")
@@ -263,6 +308,9 @@ func (a *App) handleUpdateDonor(w http.ResponseWriter, r *http.Request, id strin
 }
 
 func (a *App) handleUpdateDonorStatus(w http.ResponseWriter, r *http.Request, id string) {
+	if !a.requireRole(w, r, "SUPER_ADMIN") {
+		return
+	}
 	var input DonorStatusRequest
 	if err := decodeJSON(r, &input); err != nil {
 		fail(w, http.StatusBadRequest, "BAD_REQUEST", "Body status pendonor tidak valid.")
@@ -273,6 +321,9 @@ func (a *App) handleUpdateDonorStatus(w http.ResponseWriter, r *http.Request, id
 }
 
 func (a *App) handleCheckin(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	var input DonationCheckinRequest
 	if err := decodeJSON(r, &input); err != nil {
 		fail(w, http.StatusBadRequest, "BAD_REQUEST", "Body check-in tidak valid.")
@@ -284,11 +335,17 @@ func (a *App) handleCheckin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleListHospitals(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	hospitals, err := a.store.ListHospitals(r.Context())
 	a.respond(w, hospitals, err, http.StatusOK)
 }
 
 func (a *App) handleCreateHospital(w http.ResponseWriter, r *http.Request) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	var input HospitalRequest
 	if err := decodeJSON(r, &input); err != nil {
 		fail(w, http.StatusBadRequest, "BAD_REQUEST", "Body rumah sakit tidak valid.")
@@ -299,6 +356,9 @@ func (a *App) handleCreateHospital(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleUpdateHospital(w http.ResponseWriter, r *http.Request, id string) {
+	if !a.requireRole(w, r, "SUPER_ADMIN", "OPERATOR") {
+		return
+	}
 	var input HospitalRequest
 	if err := decodeJSON(r, &input); err != nil {
 		fail(w, http.StatusBadRequest, "BAD_REQUEST", "Body update rumah sakit tidak valid.")
@@ -306,6 +366,17 @@ func (a *App) handleUpdateHospital(w http.ResponseWriter, r *http.Request, id st
 	}
 	hospital, err := a.store.UpdateHospital(r.Context(), id, input)
 	a.respond(w, hospital, err, http.StatusOK)
+}
+
+func (a *App) requireRole(w http.ResponseWriter, r *http.Request, roles ...string) bool {
+	admin := adminFromContext(r.Context())
+	for _, role := range roles {
+		if strings.EqualFold(admin.Role, role) {
+			return true
+		}
+	}
+	fail(w, http.StatusForbidden, "FORBIDDEN", "Akses ditolak. Hak akses tidak cukup.")
+	return false
 }
 
 func (a *App) respond(w http.ResponseWriter, data interface{}, err error, status int) {

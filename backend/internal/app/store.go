@@ -2,30 +2,32 @@ package app
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Store struct {
-	pool *pgxpool.Pool
-	cfg  Config
+	pool     *pgxpool.Pool
+	cfg      Config
+	qrCipher *QRCipher
 }
 
-func NewStore(pool *pgxpool.Pool, cfg Config) *Store {
-	return &Store{pool: pool, cfg: cfg}
+func NewStore(pool *pgxpool.Pool, cfg Config, qrCipher *QRCipher) *Store {
+	return &Store{pool: pool, cfg: cfg, qrCipher: qrCipher}
 }
 
-func (s *Store) RefreshEligibility(ctx context.Context) error {
-	_, err := s.pool.Exec(ctx, `
+func (s *Store) RefreshEligibility(ctx context.Context) (int64, error) {
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE users
 		SET is_eligible = TRUE, updated_at = NOW()
 		WHERE is_active = TRUE
@@ -33,7 +35,10 @@ func (s *Store) RefreshEligibility(ctx context.Context) error {
 		  AND next_eligible <= CURRENT_DATE
 		  AND is_eligible = FALSE
 	`)
-	return err
+	if err != nil {
+		return 0, err
+	}
+	return tag.RowsAffected(), nil
 }
 
 func (s *Store) FindAdminByUsername(ctx context.Context, username string) (AdminUser, string, error) {
@@ -309,7 +314,7 @@ func (s *Store) EligibleDonorsForRequest(ctx context.Context, requestID string) 
 	return donors, nil
 }
 
-func (s *Store) BroadcastRequest(ctx context.Context, requestID string) (BroadcastResult, error) {
+func (s *Store) BroadcastRequest(ctx context.Context, requestID string, fcm *FCMClient) (BroadcastResult, error) {
 	request, err := s.GetRequest(ctx, requestID)
 	if err != nil {
 		return BroadcastResult{}, err
@@ -374,7 +379,121 @@ func (s *Store) BroadcastRequest(ctx context.Context, requestID string) (Broadca
 		return BroadcastResult{}, err
 	}
 
-	return BroadcastResult{BroadcastID: broadcastID, RecipientCount: len(donors), QueuedAt: queuedAt}, nil
+	result := BroadcastResult{BroadcastID: broadcastID, RecipientCount: len(donors), QueuedAt: queuedAt}
+	s.sendBroadcastNotifications(ctx, fcm, request, donors, broadcastID, messageTitle, messageBody)
+	return result, nil
+}
+
+type broadcastDeviceToken struct {
+	DonorID string
+	Token   string
+}
+
+func (s *Store) sendBroadcastNotifications(ctx context.Context, fcm *FCMClient, request EmergencyRequest, donors []Donor, broadcastID, title, body string) {
+	if fcm == nil || len(donors) == 0 {
+		return
+	}
+
+	recipients, err := s.deviceTokensForDonors(ctx, donors)
+	if err != nil {
+		slog.Default().Error("fetch fcm device tokens", "request_id", request.ID, "broadcast_id", broadcastID, "error", err)
+		return
+	}
+	if len(recipients) == 0 {
+		return
+	}
+
+	tokens := make([]string, 0, len(recipients))
+	for _, recipient := range recipients {
+		tokens = append(tokens, recipient.Token)
+	}
+
+	data := map[string]string{
+		"type":            "emergency_broadcast",
+		"broadcast_id":    broadcastID,
+		"request_id":      request.ID,
+		"blood_type":      request.BloodType,
+		"product_type":    request.ProductType,
+		"urgency_level":   request.UrgencyLevel,
+		"hospital_name":   request.HospitalName,
+		"quantity_needed": strconv.Itoa(request.QuantityNeeded),
+	}
+
+	errs := fcm.SendBatch(ctx, tokens, title, body, data)
+	for i, err := range errs {
+		if err == nil {
+			continue
+		}
+		slog.Default().Error(
+			"send fcm notification",
+			"request_id", request.ID,
+			"broadcast_id", broadcastID,
+			"donor_id", recipients[i].DonorID,
+			"token", recipients[i].Token,
+			"error", err,
+		)
+	}
+}
+
+func (s *Store) deviceTokensForDonors(ctx context.Context, donors []Donor) ([]broadcastDeviceToken, error) {
+	donorIDs := make([]pgtype.UUID, 0, len(donors))
+	for _, donor := range donors {
+		var donorID pgtype.UUID
+		if err := donorID.Scan(donor.ID); err != nil {
+			return nil, fmt.Errorf("parse donor id %q: %w", donor.ID, err)
+		}
+		donorIDs = append(donorIDs, donorID)
+	}
+	if len(donorIDs) == 0 {
+		return nil, nil
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT id::TEXT, device_token
+		FROM users
+		WHERE id = ANY($1) AND device_token IS NOT NULL
+	`, donorIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var recipients []broadcastDeviceToken
+	for rows.Next() {
+		var recipient broadcastDeviceToken
+		if err := rows.Scan(&recipient.DonorID, &recipient.Token); err != nil {
+			return nil, err
+		}
+		recipient.Token = strings.TrimSpace(recipient.Token)
+		if recipient.Token == "" {
+			continue
+		}
+		recipients = append(recipients, recipient)
+	}
+	return recipients, rows.Err()
+}
+
+func (s *Store) ExpireBroadcasts(ctx context.Context) (int64, error) {
+	var expiredCount int64
+	var requestsUpdated int64
+	err := s.pool.QueryRow(ctx, `
+		WITH expired AS (
+			UPDATE emergency_broadcasts
+			SET status = 'EXPIRED', closed_at = NOW()
+			WHERE status = 'ACTIVE' AND expires_at < NOW()
+			RETURNING broadcast_id
+		), request_update AS (
+			UPDATE blood_requests
+			SET status = 'EXPIRED'
+			WHERE broadcast_id IN (SELECT broadcast_id FROM expired)
+			RETURNING 1
+		)
+		SELECT (SELECT COUNT(*) FROM expired), (SELECT COUNT(*) FROM request_update)
+	`).Scan(&expiredCount, &requestsUpdated)
+	if err != nil {
+		return 0, err
+	}
+	return expiredCount, nil
 }
 
 func (s *Store) ListLiveResponses(ctx context.Context, requestID string) ([]LiveResponse, error) {
@@ -432,10 +551,11 @@ func (s *Store) ListDonors(ctx context.Context, search string) ([]Donor, error) 
 }
 
 func (s *Store) GetDonor(ctx context.Context, key string) (Donor, error) {
+	lookupKey := s.decryptQRLookupKey(key)
 	row := s.pool.QueryRow(ctx, donorSelectSQL()+`
-		WHERE u.id::TEXT = $3 OR u.qr_token = $3
+		WHERE u.id::TEXT = $3 OR u.qr_token = $4 OR u.qr_token = $5
 		LIMIT 1
-	`, s.cfg.PMILongitude, s.cfg.PMILatitude, key)
+	`, s.cfg.PMILongitude, s.cfg.PMILatitude, lookupKey, strings.TrimSpace(key), prefixedQRToken(key))
 	donor, err := scanDonor(row)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Donor{}, errNotFound("pendonor tidak ditemukan")
@@ -469,23 +589,102 @@ func (s *Store) CreateDonor(ctx context.Context, input DonorCreateRequest) (Dono
 		input.Longitude = s.cfg.PMILongitude + 0.03
 	}
 
-	token := "QR-" + strings.ToUpper(randomHex(5))
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return Donor{}, err
+	}
+	defer tx.Rollback(ctx)
+
 	var id string
-	err := s.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		INSERT INTO users (
 			qr_token, nik, full_name, email, phone, blood_type, birth_date, gender, address,
 			latitude, longitude, location, device_token, is_eligible, is_active
 		)
 		VALUES (
-			$1, $2, $3, $4, $5, $6, $7::DATE, $8, $9,
-			$10, $11, ST_SetSRID(ST_MakePoint($11, $10), 4326)::geography, $12, TRUE, TRUE
+			'pending:' || gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6::DATE, $7, $8,
+			$9, $10, ST_SetSRID(ST_MakePoint($10, $9), 4326)::geography, $11, TRUE, TRUE
 		)
 		RETURNING id::TEXT
-	`, token, input.NIK, input.FullName, nullString(input.Email), input.Phone, input.BloodType, input.BirthDate, input.Gender, input.Address, input.Latitude, input.Longitude, nullString(input.DeviceToken)).Scan(&id)
+	`, input.NIK, input.FullName, nullString(input.Email), input.Phone, input.BloodType, input.BirthDate, input.Gender, input.Address, input.Latitude, input.Longitude, nullString(input.DeviceToken)).Scan(&id)
 	if err != nil {
 		return Donor{}, err
 	}
+
+	qrToken, err := s.encryptQRToken(id)
+	if err != nil {
+		return Donor{}, err
+	}
+	_, err = tx.Exec(ctx, `
+		UPDATE users
+		SET qr_token = $2, updated_at = NOW()
+		WHERE id::TEXT = $1
+	`, id, qrToken)
+	if err != nil {
+		return Donor{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return Donor{}, err
+	}
 	return s.GetDonor(ctx, id)
+}
+
+func (s *Store) ReencryptQRTokens(ctx context.Context, logger *slog.Logger) (int64, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	if s.qrCipher == nil {
+		return 0, errors.New("QR cipher is not configured")
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT id::TEXT, qr_token
+		FROM users
+		WHERE qr_token NOT LIKE 'encrypted:%'
+		ORDER BY created_at ASC
+	`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	type candidate struct {
+		ID      string
+		QRToken string
+	}
+	var candidates []candidate
+	for rows.Next() {
+		var item candidate
+		if err := rows.Scan(&item.ID, &item.QRToken); err != nil {
+			return 0, err
+		}
+		candidates = append(candidates, item)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	logger.Info("reencrypting QR tokens", "total", len(candidates))
+	var updated int64
+	for _, item := range candidates {
+		qrToken, err := s.encryptQRToken(item.ID)
+		if err != nil {
+			return updated, err
+		}
+		tag, err := s.pool.Exec(ctx, `
+			UPDATE users
+			SET qr_token = $3, updated_at = NOW()
+			WHERE id::TEXT = $1 AND qr_token = $2
+		`, item.ID, item.QRToken, qrToken)
+		if err != nil {
+			return updated, err
+		}
+		updated += tag.RowsAffected()
+		logger.Info("reencrypted QR token", "user_id", item.ID, "updated", tag.RowsAffected())
+	}
+
+	return updated, nil
 }
 
 func (s *Store) UpdateDonor(ctx context.Context, id string, input DonorUpdateRequest) (Donor, error) {
@@ -838,6 +1037,7 @@ func scanDonor(row pgx.Row) (Donor, error) {
 	if math.IsNaN(donor.DistanceKm) {
 		donor.DistanceKm = 0
 	}
+	donor.UUID = publicQRToken(donor.UUID)
 	return donor, err
 }
 
@@ -933,14 +1133,6 @@ func generateNIK() string {
 	return fmt.Sprintf("9%015d", time.Now().UnixNano()%1_000_000_000_000_000)
 }
 
-func randomHex(size int) string {
-	buffer := make([]byte, size)
-	if _, err := rand.Read(buffer); err != nil {
-		return fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-	return hex.EncodeToString(buffer)
-}
-
 type appError struct {
 	status  int
 	code    string
@@ -957,4 +1149,41 @@ func errBadRequest(message string) error {
 
 func errNotFound(message string) error {
 	return appError{status: 404, code: "NOT_FOUND", message: message}
+}
+
+func (s *Store) encryptQRToken(userID string) (string, error) {
+	if s.qrCipher == nil {
+		return "", errors.New("QR cipher is not configured")
+	}
+	ciphertext, err := s.qrCipher.Encrypt(userID)
+	if err != nil {
+		return "", err
+	}
+	return qrTokenEncryptedPrefix + ciphertext, nil
+}
+
+func (s *Store) decryptQRLookupKey(key string) string {
+	trimmed := strings.TrimSpace(key)
+	if s.qrCipher == nil {
+		return trimmed
+	}
+
+	ciphertext := strings.TrimPrefix(trimmed, qrTokenEncryptedPrefix)
+	plaintext, err := s.qrCipher.Decrypt(ciphertext)
+	if err != nil {
+		return trimmed
+	}
+	return plaintext
+}
+
+func prefixedQRToken(token string) string {
+	trimmed := strings.TrimSpace(token)
+	if trimmed == "" || strings.HasPrefix(trimmed, qrTokenEncryptedPrefix) {
+		return trimmed
+	}
+	return qrTokenEncryptedPrefix + trimmed
+}
+
+func publicQRToken(token string) string {
+	return strings.TrimPrefix(token, qrTokenEncryptedPrefix)
 }
