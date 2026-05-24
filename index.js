@@ -50,5 +50,6 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 console.log("Bank Darah dev runner started.");
+console.log("Pastikan PostgreSQL/PostGIS sudah berjalan sebelum memakai runner manual ini.");
 console.log("Frontend: http://127.0.0.1:5173");
 console.log("Backend : http://127.0.0.1:8080/api/v1");

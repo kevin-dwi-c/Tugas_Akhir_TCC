@@ -9,6 +9,9 @@ coverage/
 .vite/
 .cache/
 *.tsbuildinfo
+backend/bin/
+backend/*.exe
+backend/.env
 
 # Environment files
 .env

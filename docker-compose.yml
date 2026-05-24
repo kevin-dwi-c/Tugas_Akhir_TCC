@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgis/postgis:15-3.4
+    container_name: bank-darah-postgres
+    environment:
+      POSTGRES_DB: bank_darah
+      POSTGRES_USER: bank_darah
+      POSTGRES_PASSWORD: bank_darah
+    ports:
+      - "5432:5432"
+    volumes:
+      - bank_darah_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bank_darah -d bank_darah"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: bank-darah-backend
+    environment:
+      PORT: 8080
+      DATABASE_URL: postgres://bank_darah:bank_darah@postgres:5432/bank_darah?sslmode=disable
+      JWT_SECRET: dev-bank-darah-secret-change-me
+      AUTH_REQUIRED: "true"
+      PMI_NAME: PMI Kota Yogyakarta
+      PMI_LOCATION: UDD PMI Kota Yogyakarta
+      PMI_LATITUDE: -7.7839
+      PMI_LONGITUDE: 110.3798
+      ELIGIBLE_RADIUS_KM: 10
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: bank-darah-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  bank_darah_pgdata:

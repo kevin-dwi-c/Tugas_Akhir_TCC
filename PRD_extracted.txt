@@ -1,0 +1,1126 @@
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+ 
+  
+PRODUCT REQUIREMENTS DOCUMENT 
+Aplikasi Bank Darah 
+Hybrid Database System 
+Versi Dokumen 
+1.0.0 – Mei 2026 
+Status 
+DRAFT – For Internal Review 
+Dibuat oleh 
+Senior Product Manager – Bank Darah Digital 
+Platform 
+Mobile (Flutter) + Web Admin 
+Database 
+SQL (RDBMS) + NoSQL (Firestore/MongoDB) 
+Tanggal 
+18 Mei 2026 
+ 
+ 
+ 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+1. Executive Summary & Problem Statement 
+ 
+1.1 Latar Belakang & Urgensi Klinis 
+"Setiap 2 detik, seseorang di Indonesia membutuhkan transfusi darah. Namun proses 
+mendapatkan darah yang tepat di waktu yang tepat masih menjadi tantangan kritis di 
+lapangan." 
+ 
+Ketersediaan darah yang cepat dan tepat golongan merupakan faktor penentu keselamatan jiwa dalam 
+kasus bedah darurat, trauma, komplikasi persalinan, dan penyakit kronis seperti thalassemia. Saat ini, 
+sistem distribusi darah di Indonesia masih menghadapi beberapa permasalahan kritis berikut: 
+ 
+• Ketergantungan pada metode manual: Permintaan darah dari rumah sakit ke PMI masih 
+dilakukan via telepon atau WhatsApp, rentan terhadap delay komunikasi dan human error dalam 
+pencatatan. 
+• Minimnya transparansi stok: Pendonor potensial tidak memiliki akses real-time terhadap kondisi 
+kekritisan stok darah di PMI terdekat, sehingga motivasi donor sukarela tidak terpicu secara 
+optimal. 
+• Proses check-in donor yang lambat: Saat kondisi darurat dan antrian donor membludak, proses 
+verifikasi identitas dan kelaikan medis secara manual menghabiskan waktu kritis yang harusnya 
+digunakan untuk prosedur pengambilan darah. 
+• Fragmentasi data donor: Data riwayat donasi tidak terpusat, sehingga validasi jeda donor 
+minimum (2 bulan) tidak bisa diverifikasi secara otomatis dan akurat. 
+• Jangkauan notifikasi terbatas: Tidak ada mekanisme untuk menjangkau pendonor dalam radius 
+geografis tertentu dengan golongan darah spesifik secara masif dan cepat. 
+ 
+1.2 Visi Produk 
+Membangun ekosistem digital yang menghubungkan PMI, rumah sakit, dan pendonor secara real-time 
+— sehingga respons terhadap kondisi gawat darurat darah dapat berlangsung dalam hitungan menit, 
+bukan jam. 
+ 
+1.3 Solusi yang Ditawarkan 
+Aplikasi Bank Darah adalah sistem dua sisi (two-sided platform) yang terdiri dari: 
+ 
+• Web App Admin PMI: Dashboard terpusat untuk manajemen stok, penerimaan permintaan 
+darurat dari RS, penerbitan broadcast notifikasi ke pendonor terkualifikasi, dan sistem check-in 
+donor berbasis QR Code. 
+• Mobile App Pendonor (Flutter): Aplikasi untuk menerima notifikasi darurat golongan darah 
+spesifik, merespons panggilan, memantau kelaikan donor personal, dan berbagi informasi urgensi 
+ke jaringan sosial. 
+ 
+Keunggulan utama sistem ini adalah arsitektur hybrid SQL + NoSQL yang memisahkan data 
+sensitif transaksional (SQL) dengan data real-time dinamis (NoSQL), memungkinkan broadcast 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+darurat mencapai ribuan pendonor dalam hitungan detik tanpa mengorbankan integritas data 
+medis. 
+ 
+1.4 Scope & Batasan Produk 
+Dalam scope (v1.0): 
+• Manajemen stok darah per golongan dan produk darah 
+• Sistem emergency broadcast dengan filter golongan darah + radius 10 KM 
+• Kartu donor digital berbasis QR Code 
+• Countdown masa siap donor 
+• Progress bar stok makro untuk pendonor 
+• Fitur share notifikasi ke WhatsApp 
+ 
+Di luar scope (v1.0): 
+• Sistem manajemen inventaris kantong darah individual (tracking per kantong) 
+• Integrasi langsung dengan sistem HIS (Hospital Information System) 
+• Pembayaran atau insentif digital untuk pendonor 
+• Telemedis atau konsultasi kesehatan 
+ 
+ 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+2. User Personas & User Journey 
+ 
+2.1 Persona 1 – Admin PMI 
+Atribut 
+Detail Persona 
+Nama 
+Budi Santoso – Koordinator Unit Donor Darah PMI Kota 
+Usia 
+38 tahun 
+Peran 
+Mengelola operasional harian PMI, koordinasi dengan RS, dan validasi 
+pendonor 
+Pain Points 
+Kewalahan saat kondisi darurat – harus menelepon donor satu per satu, data 
+stok tidak real-time, verifikasi manual memakan waktu 10-15 menit per donor 
+Goals 
+Merespons permintaan darah darurat dalam < 5 menit, meminimalkan waktu 
+check-in donor, memiliki visibilitas penuh atas stok dan respons donor 
+Tech Literacy 
+Menengah – terbiasa dengan sistem komputer, namun tidak memiliki 
+background teknis mendalam 
+ 
+User Journey – Admin PMI (Skenario Darurat) 
+• TRIGGER: Telepon masuk dari RS → Kebutuhan 4 kantong darah O- untuk pasien kecelakaan 
+lalu lintas. 
+• LANGKAH 1: Admin membuka Web App PMI → Navigasi ke menu "Permintaan Darurat". 
+• LANGKAH 2: Input data permintaan: nama RS, golongan darah (O-), jumlah kantong, tingkat 
+urgensi (CRITICAL), catatan tambahan. 
+• LANGKAH 3: Sistem otomatis mem-filter donor dengan golongan O- yang berdomisili dalam 
+radius 10 KM dari PMI dan sudah melewati jeda 2 bulan (eligible). 
+• LANGKAH 4: Admin mereview jumlah donor eligible → Konfirmasi → Broadcast terkirim ke 
+semua donor eligible. 
+• LANGKAH 5: Admin memantau live dashboard respons pendonor (Accepted/On The 
+Way/Declined). 
+• LANGKAH 6: Pendonor tiba di PMI → Admin membuka fitur QR Scanner → Scan kartu donor 
+digital dari HP pendonor → Profil muncul otomatis → Verifikasi kelengkapan form medis → 
+Check-in selesai. 
+• LANGKAH 7: Setelah donor selesai → Admin menutup emergency broadcast → Update stok 
+darah → Rekap dikirim ke RS. 
+ 
+2.2 Persona 2 – Pendonor 
+Atribut 
+Detail Persona 
+Nama 
+Rina Maharani – Mahasiswi S1, Pendonor Aktif Sejak 2022 
+Usia 
+22 tahun 
+Peran 
+Pendonor sukarela dengan golongan darah A+ 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+Atribut 
+Detail Persona 
+Pain Points 
+Tidak tahu kapan stok darah kritis, sering lupa kapan bisa donor lagi, proses 
+check-in di PMI lambat dan berulang (isi form yang sama berkali-kali) 
+Goals 
+Berkontribusi saat dibutuhkan, mengetahui kapan dia sudah boleh donor lagi, 
+proses di PMI cepat dan mudah 
+Tech Literacy 
+Tinggi – pengguna aktif smartphone, familiar dengan berbagai aplikasi 
+ 
+User Journey – Pendonor (Skenario Menerima Notifikasi Darurat) 
+• TRIGGER: Notifikasi push masuk dengan alarm keras → Banner merah "DARURAT: Dibutuhkan 
+Darah O- di PMI Kota – SEGERA". 
+• LANGKAH 1: Pendonor membuka notifikasi → Halaman detail emergency muncul: RS peminta, 
+jumlah kebutuhan, jarak ke PMI. 
+• LANGKAH 2: Pendonor melihat countdown widget → Sudah 62 hari sejak donor terakhir → 
+Status: SIAP DONOR (hijau). 
+• LANGKAH 3: Pendonor klik "Saya Siap Donor" → Status berubah di live dashboard Admin. 
+• LANGKAH 4 (opsional): Pendonor tap tombol "Bagikan ke WhatsApp" → Teks otomatis ter-
+generate → Forward ke grup. 
+• LANGKAH 5: Pendonor tiba di PMI → Buka app → Tampilkan QR Code pada halaman "Kartu 
+Donor" → Admin scan → Check-in instan. 
+• LANGKAH 6: Setelah donor selesai → Riwayat donasi otomatis terupdate → Countdown reset ke 
+60 hari. 
+ 
+ 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+3. Functional Requirements & User Stories 
+ 
+Keterangan Prioritas: P0 = Must Have (blocker untuk launch), P1 = Should Have (target v1.0), 
+P2 = Nice to Have (v1.1+) 
+ 
+3.1 Web App Admin PMI – Functional Requirements 
+ 
+ID 
+Nama Fitur 
+Deskripsi 
+Prioritas 
+FR-
+A01 
+Dashboard 
+Stok Darah 
+Menampilkan jumlah stok darah real-time per 
+golongan darah (A+/A-/B+/B-/O+/O-/AB+/AB-) dan 
+per jenis produk (WB, PRC, FFP, Trombosit). Stok 
+ditampilkan dengan indikator warna: Aman (hijau), 
+Menipis (kuning), Kritis (merah). 
+P0 
+FR-
+A02 
+Manajemen 
+Permintaan 
+Darurat 
+Formulir input permintaan darah darurat dari RS: 
+nama RS, PIC, nomor kontak, golongan darah, 
+jumlah kantong, tingkat urgensi 
+(CRITICAL/URGENT/NORMAL), dan catatan 
+khusus. Sistem otomatis mencatat timestamp dan 
+membuat ID permintaan unik. 
+P0 
+FR-
+A03 
+Filter Donor 
+Eligible 
+Sistem otomatis memfilter donor berdasarkan: (1) 
+kecocokan golongan darah, (2) status medis aktif 
+(tidak dalam masa tunggu), (3) radius domisili ≤ 10 
+KM dari PMI menggunakan Haversine Formula 
+pada koordinat lat-long yang tersimpan di SQL. 
+P0 
+FR-
+A04 
+Penerbitan 
+Emergency 
+Broadcast 
+Admin mereview jumlah donor eligible, kemudian 
+memublikasikan broadcast ke NoSQL. Sistem 
+mem-trigger push notification ke semua donor 
+eligible via FCM/APNs dalam hitungan detik. 
+P0 
+FR-
+A05 
+Live 
+Response 
+Dashboard 
+Halaman monitoring real-time yang menampilkan 
+daftar pendonor yang merespons (Accepted/On 
+The Way/Declined/No Response) beserta nama, 
+nomor HP, jarak, dan waktu respons. Data 
+bersumber dari koleksi NoSQL live_responses. 
+P0 
+FR-
+A06 
+QR Code 
+Scanner 
+(Check-in 
+Donor) 
+Mengaktifkan kamera perangkat untuk membaca 
+QR Code dari kartu donor digital pendonor. Sistem 
+mendekripsi UUID dari QR, mengambil profil donor 
+dari SQL, dan menampilkan data lengkap: nama, 
+golongan darah, riwayat 3 donor terakhir, dan 
+status kelaikan medis. 
+P0 
+FR-
+A07 
+Verifikasi 
+Kelaikan 
+Medis Manual 
+Setelah QR scan, admin dapat mengisi form 
+kelaikan medis saat itu (tekanan darah, HB, berat 
+badan). Sistem otomatis menghitung dan mem-
+validasi apakah donor memenuhi syarat PMI. Hasil 
+disimpan ke SQL. 
+P0 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+ID 
+Nama Fitur 
+Deskripsi 
+Prioritas 
+FR-
+A08 
+Input & 
+Update Stok 
+Darah 
+Formulir untuk menambah stok (setelah donor 
+berhasil) atau mengurangi stok (setelah distribusi 
+ke RS). Setiap transaksi stok dicatat dengan 
+timestamp, user admin yang melakukan, dan 
+referensi permintaan. 
+P0 
+FR-
+A09 
+Manajemen 
+Data 
+Pendonor 
+CRUD untuk data pendonor: tambah donor baru, 
+edit data kontak/alamat, nonaktifkan akun, dan lihat 
+riwayat lengkap donasi. Memiliki fitur pencarian 
+dan filter berdasarkan golongan darah dan status. 
+P1 
+FR-
+A10 
+Manajemen 
+Data Rumah 
+Sakit 
+CRUD untuk data rumah sakit mitra: nama, alamat, 
+koordinat, PIC, nomor kontak, dan riwayat 
+permintaan sebelumnya. 
+P1 
+FR-
+A11 
+Riwayat 
+Emergency & 
+Laporan 
+Log semua permintaan darurat yang pernah dibuat, 
+termasuk jumlah respons, berapa yang hadir, 
+berapa kantong terkumpul, dan waktu resolusi. 
+Dapat diekspor ke format CSV/PDF. 
+P1 
+FR-
+A12 
+Manajemen 
+Akun Admin 
+Pengelolaan akun admin PMI dengan role-based 
+access: Super Admin (full access) dan Operator 
+(terbatas: tidak bisa hapus data donor). 
+P2 
+FR-
+A13 
+Notifikasi 
+Internal Web 
+Pop-up/banner notifikasi di dalam Web App ketika 
+ada permintaan RS baru yang masuk (jika fitur 
+integrasi form RS aktif). 
+P2 
+ 
+3.2 Mobile App Pendonor – Functional Requirements 
+ 
+ID 
+Nama Fitur 
+Deskripsi 
+Prioritas 
+FR-
+M01 
+Registrasi & 
+Onboarding 
+Donor 
+Alur registrasi pendonor baru: input data diri 
+lengkap (nama, NIK, tanggal lahir, golongan darah, 
+alamat dengan picker peta untuk koordinat lat-long, 
+nomor HP), foto profil opsional. Data tersimpan ke 
+SQL setelah verifikasi email/OTP. 
+P0 
+FR-
+M02 
+Penerimaan 
+Push 
+Notification 
+Darurat 
+Sistem menerima push notification dari FCM 
+(Firebase Cloud Messaging) berdasarkan topik 
+yang sesuai dengan golongan darah pendonor. 
+Notifikasi CRITICAL memicu suara alarm keras dan 
+banner merah menyala (mengoverride mode 
+senyap). 
+P0 
+FR-
+M03 
+Halaman 
+Detail 
+Notifikasi 
+Darurat 
+Halaman yang menampilkan: nama PMI yang 
+membutuhkan, golongan darah yang dicari, jumlah 
+kantong dibutuhkan, jarak ke PMI, tingkat urgensi 
+(dengan warna indikator), dan tombol aksi: "Saya 
+Siap Donor" / "Tidak Bisa Kali Ini". 
+P0 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+ID 
+Nama Fitur 
+Deskripsi 
+Prioritas 
+FR-
+M04 
+Kartu Donor 
+Digital (QR 
+Code) 
+Halaman yang menampilkan QR Code yang di-
+generate secara lokal di perangkat berdasarkan 
+UUID terenkripsi yang tersimpan. QR Code 
+ditampilkan dalam ukuran besar dan dapat di-
+brightness-up layar otomatis untuk kemudahan 
+scan. Tidak membutuhkan koneksi internet. 
+P0 
+FR-
+M05 
+Countdown 
+Widget Siap 
+Donor 
+Kalkulasi dan visualisasi masa tunggu donor: 
+(Tanggal Donor Terakhir + 60 hari) - Tanggal Hari 
+Ini. Ditampilkan sebagai circular progress bar 
+dengan warna merah (belum siap) → kuning (< 7 
+hari) → hijau (siap donor). Kalkulasi dilakukan lokal 
+tanpa API call. 
+P0 
+FR-
+M06 
+Progress Bar 
+Stok Darah 
+(Makro) 
+Tampilan beranda yang menampilkan tingkat stok 
+agregat PMI terdekat per golongan darah dengan 
+status: Aman / Menipis / Kritis. Data di-fetch dari 
+API PMI dengan cache 30 menit untuk efisiensi. 
+Memicu kesadaran donor sukarela. 
+P0 
+FR-
+M07 
+Tombol Share 
+ke WhatsApp 
+Tombol di halaman detail notifikasi darurat yang 
+men-generate teks broadcast siap kirim: "🩸 
+BUTUH DONOR DARAH [GOL] SEGERA! PMI 
+[Nama] membutuhkan [N] kantong darah [GOL] 
+untuk kondisi darurat. Jika Anda bergolongan 
+darah [GOL] & siap donor, segera hubungi PMI 
+atau install Aplikasi Bank Darah: [link]. JazakAllah 
+Khair 🙏" – dibuka langsung via WhatsApp deep 
+link. 
+P1 
+FR-
+M08 
+Riwayat 
+Donasi 
+Personal 
+Halaman yang menampilkan timeline donasi: 
+tanggal, lokasi PMI, golongan darah yang 
+didonorkan, dan catatan kesehatan saat itu. Ditarik 
+dari SQL via API. 
+P1 
+FR-
+M09 
+Profil & Edit 
+Data Donor 
+Halaman untuk memperbarui data kontak, foto 
+profil, dan alamat (dengan update koordinat lat-
+long). Perubahan data sensitif (golongan darah) 
+membutuhkan re-verifikasi oleh admin PMI. 
+P1 
+FR-
+M10 
+Pengaturan 
+Notifikasi 
+Toggle untuk mengaktifkan/menonaktifkan jenis 
+notifikasi: CRITICAL (tidak bisa dinonaktifkan), 
+URGENT, NORMAL (edukasi/reguler). Juga 
+pengaturan jam tenang (Do Not Disturb) untuk 
+notifikasi non-CRITICAL. 
+P1 
+FR-
+M11 
+Onboarding & 
+Panduan 
+Donor 
+Tutorial singkat in-app (3-5 layar) untuk pendonor 
+baru: syarat donor, cara kerja app, cara 
+menampilkan QR saat check-in. Ditampilkan sekali 
+saat pertama login. 
+P2 
+FR-
+M12 
+Badge & 
+Gamifikasi 
+Ringan 
+Badge pencapaian: "Pendonor Pertama", "5x 
+Donor", "Pahlawan Darurat" (donor dalam 24 jam 
+setelah notifikasi CRITICAL). Meningkatkan retensi 
+pendonor jangka panjang. 
+P2 
+ 
+ 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+4. Workflow & System Architecture 
+ 
+4.1 Alur Penanganan Kondisi Gawat Darurat (End-to-End) 
+ 
+Diagram alur berikut menggambarkan proses lengkap dari telepon RS hingga pendonor 
+melakukan check-in QR di PMI. 
+ 
+FASE 1 – Inisiasi Permintaan (0–2 menit) 
+• Rumah Sakit menelepon PMI dan melaporkan kebutuhan darah mendesak (golongan, jumlah, 
+urgensi). 
+• Admin PMI membuka Web App → Menu "Permintaan Darurat" → Isi formulir permintaan (FR-
+A02). 
+• Sistem membuat record baru di tabel SQL blood_requests dengan status PENDING. 
+ 
+FASE 2 – Filter & Broadcast (2–3 menit) 
+• Backend men-query SQL: SELECT * FROM users WHERE blood_type = [target] AND is_eligible 
+= TRUE AND ST_Distance(location, pmi_location) <= 10000. 
+• Sistem mengambil daftar donor_ids yang eligible. 
+• Admin mereview jumlah hasil filter → Klik "Kirim Broadcast" → Sistem membuat dokumen baru di 
+koleksi NoSQL emergency_broadcasts dengan status ACTIVE dan array eligible_donor_ids. 
+• Cloud Function / Backend worker mem-trigger Firebase Cloud Messaging (FCM) ke semua 
+device token yang terhubung dengan donor_ids tersebut. 
+• Notifikasi dikirim berdasarkan tingkat urgensi: CRITICAL = high-priority FCM dengan sound 
+alarm, URGENT/NORMAL = default priority. 
+ 
+FASE 3 – Respons Pendonor (2–30 menit) 
+• Pendonor menerima notifikasi → Buka app → Halaman detail darurat. 
+• Pendonor tap "Saya Siap Donor" → App menulis dokumen ke koleksi NoSQL live_responses: { 
+broadcast_id, donor_id, status: ACCEPTED, timestamp, current_location (opsional) }. 
+• Live dashboard Admin diperbarui real-time via Firestore listener (onSnapshot) tanpa perlu refresh. 
+• Pendonor yang menolak → Status DECLINED dicatat di live_responses untuk analitik. 
+ 
+FASE 4 – Check-in di PMI (Momen kritis) 
+• Pendonor tiba di PMI → Buka halaman "Kartu Donor" di app → QR Code ditampilkan. 
+• Admin mengaktifkan QR Scanner di Web App → Arahkan kamera ke QR. 
+• Frontend mendekripsi QR → Ekstrak UUID pendonor → Kirim GET /api/donors/:uuid ke Backend. 
+• Backend mengambil data lengkap dari SQL: profil, riwayat donasi, status kelaikan → Kirim ke 
+Frontend. 
+• Admin Web melihat profil donor muncul otomatis → Lakukan verifikasi medis quick-check (TD, 
+HB). 
+• Admin klik "Konfirmasi Check-in" → Backend INSERT ke SQL tabel donation_history dengan 
+status CHECKED_IN. 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+• Status pendonor di live_responses diupdate ke CHECKED_IN. 
+ 
+FASE 5 – Pasca Donor 
+• Setelah proses pengambilan darah selesai → Admin update status di donation_history ke 
+COMPLETED. 
+• Sistem otomatis: (1) update last_donation_date di tabel users, (2) set next_eligible_date = 
+last_donation_date + 60 hari, (3) update is_eligible = FALSE (akan berubah otomatis setelah 60 
+hari atau via cron job harian). 
+• Stok darah diupdate via FR-A08 (tambah kantong yang berhasil diproses). 
+• Admin menutup emergency broadcast → Status dokumen NoSQL berubah ke CLOSED. 
+• Pendonor menerima notifikasi terima kasih + badge pencapaian (jika berlaku). 
+ 
+4.2 Alur Data SQL ↔ NoSQL 
+ 
+Proses 
+Data di SQL 
+Data di NoSQL 
+Sinkronisasi 
+Broadcast 
+Darurat 
+blood_requests (ID, 
+RS, golongan, urgensi, 
+status) 
+emergency_broadcasts 
+(broadcast_id, 
+eligible_donor_ids, 
+active_responses) 
+Setelah SQL commit → 
+tulis ke NoSQL. Broadcast 
+ID = foreign key. 
+Respons Donor 
+users 
+(last_response_at 
+updated) 
+live_responses 
+(donor_id, status, 
+timestamp, location) 
+NoSQL menjadi source of 
+truth untuk real-time status; 
+SQL hanya mencatat 
+metadata agregat. 
+Check-in QR 
+donation_history 
+(INSERT: 
+checked_in_at) 
+live_responses (status: 
+CHECKED_IN) 
+Transaksional di SQL → 
+async update NoSQL untuk 
+dashboard refresh. 
+Selesai Donor 
+donation_history 
+(COMPLETED), users 
+(last_donation_date 
+update) 
+emergency_broadcasts 
+(response_summary 
+diupdate) 
+SQL sebagai system of 
+record; NoSQL untuk 
+agregat summary display. 
+ 
+ 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+5. Technical & Database Specifications 
+ 
+5.1 Skema Tabel SQL (RDBMS) 
+Rekomendasi: PostgreSQL 15+ dengan ekstensi PostGIS untuk geospatial query. 
+ 
+Tabel: users (Data Pendonor) 
+CREATE TABLE users ( 
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+  nik             VARCHAR(16) UNIQUE NOT NULL, 
+  full_name       VARCHAR(100) NOT NULL, 
+  email           VARCHAR(100) UNIQUE, 
+  phone           VARCHAR(15) NOT NULL, 
+  blood_type      ENUM('A+','A-','B+','B-','O+','O-','AB+','AB-') NOT NULL, 
+  birth_date      DATE NOT NULL, 
+  gender          ENUM('M','F') NOT NULL, 
+  address         TEXT, 
+  latitude        DECIMAL(10,8) NOT NULL,   -- Koordinat domisili statis 
+  longitude       DECIMAL(11,8) NOT NULL, 
+  location        GEOGRAPHY(POINT,4326),    -- PostGIS column untuk geospatial query 
+  photo_url       VARCHAR(500), 
+  device_token    VARCHAR(500),             -- FCM token untuk push notif 
+  last_donation   DATE, 
+  next_eligible   DATE GENERATED ALWAYS AS (last_donation + INTERVAL '60 days') STORED, 
+  is_eligible     BOOLEAN DEFAULT TRUE, 
+  is_active       BOOLEAN DEFAULT TRUE, 
+  created_at      TIMESTAMPTZ DEFAULT NOW(), 
+  updated_at      TIMESTAMPTZ DEFAULT NOW() 
+); 
+ 
+-- Index untuk performa geospatial query 
+CREATE INDEX idx_users_location ON users USING GIST(location); 
+CREATE INDEX idx_users_blood_type ON users(blood_type); 
+CREATE INDEX idx_users_eligible ON users(is_eligible, next_eligible); 
+ 
+Tabel: hospitals (Data Rumah Sakit) 
+CREATE TABLE hospitals ( 
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+  name            VARCHAR(200) NOT NULL, 
+  address         TEXT, 
+  latitude        DECIMAL(10,8), 
+  longitude       DECIMAL(11,8), 
+  pic_name        VARCHAR(100), 
+  pic_phone       VARCHAR(15), 
+  email           VARCHAR(100), 
+  is_active       BOOLEAN DEFAULT TRUE, 
+  created_at      TIMESTAMPTZ DEFAULT NOW() 
+); 
+ 
+Tabel: blood_requests (Permintaan Darurat) 
+CREATE TABLE blood_requests ( 
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+  hospital_id     UUID REFERENCES hospitals(id), 
+  requested_by    VARCHAR(100),             -- Nama PIC RS yang menelepon 
+  blood_type      ENUM('A+','A-','B+','B-','O+','O-','AB+','AB-') NOT NULL, 
+  product_type    ENUM('WB','PRC','FFP','THROMBOCYTE') DEFAULT 'PRC', 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+  quantity_needed INT NOT NULL, 
+  urgency_level   ENUM('CRITICAL','URGENT','NORMAL') NOT NULL, 
+  notes           TEXT, 
+  broadcast_id    VARCHAR(100),             -- Referensi ke NoSQL document ID 
+  status          ENUM('PENDING','BROADCAST','FULFILLED','CLOSED') DEFAULT 'PENDING', 
+  created_at      TIMESTAMPTZ DEFAULT NOW(), 
+  fulfilled_at    TIMESTAMPTZ, 
+  admin_id        UUID REFERENCES admin_users(id) 
+); 
+ 
+Tabel: donation_history (Riwayat Donasi) 
+CREATE TABLE donation_history ( 
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+  donor_id        UUID REFERENCES users(id) NOT NULL, 
+  request_id      UUID REFERENCES blood_requests(id), 
+  donation_date   DATE NOT NULL, 
+  pmi_location    VARCHAR(200), 
+  blood_pressure  VARCHAR(20),              -- Misal: '120/80' 
+  hemoglobin      DECIMAL(4,1), 
+  weight          DECIMAL(5,2), 
+  volume_ml       INT DEFAULT 350, 
+  is_eligible     BOOLEAN,                  -- Hasil verifikasi medis saat itu 
+  disqualify_reason TEXT,                   -- Jika ditolak 
+  status          ENUM('CHECKED_IN','COMPLETED','REJECTED') DEFAULT 'CHECKED_IN', 
+  admin_id        UUID REFERENCES admin_users(id), 
+  created_at      TIMESTAMPTZ DEFAULT NOW() 
+); 
+ 
+Tabel: blood_stock (Stok Darah) 
+CREATE TABLE blood_stock ( 
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(), 
+  blood_type      ENUM('A+','A-','B+','B-','O+','O-','AB+','AB-') NOT NULL, 
+  product_type    ENUM('WB','PRC','FFP','THROMBOCYTE') NOT NULL, 
+  quantity        INT NOT NULL DEFAULT 0, 
+  safe_threshold  INT DEFAULT 10,           -- Batas aman (untuk indikator status) 
+  critical_threshold INT DEFAULT 3,         -- Batas kritis 
+  updated_at      TIMESTAMPTZ DEFAULT NOW(), 
+  UNIQUE(blood_type, product_type) 
+); 
+ 
+5.2 Skema Dokumen NoSQL (Firestore / MongoDB) 
+Rekomendasi: Google Cloud Firestore untuk integrasi FCM yang seamless dan kemampuan 
+real-time listener (onSnapshot) yang diperlukan oleh live response dashboard. 
+ 
+Koleksi: emergency_broadcasts 
+// Document ID: auto-generated (juga disimpan sebagai broadcast_id di SQL) 
+{ 
+  broadcast_id:       'uuid-auto-generated', 
+  request_id:         'sql-blood_request-uuid',  // FK ke SQL 
+  pmi_id:             'pmi-unit-id', 
+  blood_type:         'O-', 
+  urgency_level:      'CRITICAL',               // CRITICAL | URGENT | NORMAL 
+  message_title:      'DARURAT: Butuh Donor O- SEGERA', 
+  message_body:       'PMI Kota membutuhkan 4 kantong O-...', 
+  eligible_donor_ids: ['uuid-1', 'uuid-2', '...'],  // Array dari SQL query 
+  responded_count:    0,          // Increment saat donor respond 
+  accepted_count:     0, 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+  checkedin_count:    0, 
+  status:             'ACTIVE',   // ACTIVE | CLOSED | EXPIRED 
+  created_at:         Timestamp, 
+  expires_at:         Timestamp, // Auto-expire setelah 24 jam 
+  closed_at:          Timestamp | null 
+} 
+ 
+Koleksi: live_responses 
+// Document ID: '{broadcast_id}_{donor_id}' (untuk upsert efisien) 
+{ 
+  broadcast_id:   'broadcast-uuid', 
+  donor_id:       'donor-sql-uuid', 
+  donor_name:     'Rina Maharani',           // Denormalized untuk display speed 
+  donor_blood:    'O-', 
+  distance_km:    2.3,                        // Jarak dari domisili ke PMI 
+  status:         'ACCEPTED',  // ACCEPTED | ON_THE_WAY | DECLINED | CHECKED_IN | 
+NO_RESPONSE 
+  response_at:    Timestamp, 
+  checkin_at:     Timestamp | null, 
+  current_lat:    -7.7956,                    // Opsional – jika donor share lokasi 
+  current_lng:    110.3695 
+} 
+ 
+ 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+6. Non-Functional Requirements (NFR) 
+ 
+Kategori 
+Sub-Kategori 
+Requirement 
+Security 
+Enkripsi QR Code 
+UUID pendonor di QR Code dienkripsi menggunakan 
+AES-256 sebelum di-encode menjadi QR. Key enkripsi 
+disimpan di server-side environment variable. QR Code 
+tidak mengandung data PII yang dapat dibaca langsung. 
+Security 
+Enkripsi Data Transit 
+Semua komunikasi API menggunakan HTTPS/TLS 1.3 
+minimum. API endpoint tidak boleh dapat diakses via 
+HTTP plain. 
+Security 
+Data Medis at Rest 
+Kolom sensitif medis (hemoglobin, tekanan darah, 
+riwayat penyakit) dienkripsi di level aplikasi sebelum 
+disimpan ke database (field-level encryption). 
+Security 
+Autentikasi API 
+Semua API endpoint dilindungi dengan JWT (JSON Web 
+Token) dengan expiry 24 jam untuk mobile app dan 8 
+jam untuk web admin. Refresh token dengan rotasi 
+otomatis. 
+Security 
+Rate Limiting 
+Endpoint broadcast dibatasi 10 request/menit per admin 
+ID untuk mencegah spam broadcast. Endpoint QR scan 
+dibatasi 30 scan/menit per admin session. 
+Performance 
+Push Notification 
+Latency 
+Notifikasi harus sampai ke perangkat pendonor eligible 
+dalam waktu ≤ 5 detik dari saat admin menekan tombol 
+broadcast, dalam kondisi jaringan normal (4G/WiFi). 
+Performance 
+API Response Time 
+95th percentile response time API ≤ 300ms untuk 
+endpoint read (GET), ≤ 500ms untuk endpoint write 
+(POST/PUT) di bawah beban normal. 
+Performance 
+QR Scan Response 
+Setelah QR di-scan, profil donor harus muncul di layar 
+admin dalam ≤ 2 detik (inklusif dekripsi + API call + 
+render). 
+Performance 
+Offline QR Code 
+Kartu donor QR harus bisa ditampilkan di Mobile App 
+tanpa koneksi internet (data UUID disimpan lokal setelah 
+login berhasil, render QR dilakukan offline). 
+Reliability 
+Uptime Target 
+Sistem web backend dan database menargetkan uptime 
+99.5% (≈ 3.65 jam downtime/bulan). Notifikasi darurat 
+CRITICAL mendapat SLA uptime 99.9%. 
+Reliability 
+Broadcast Spike 
+Handling 
+Sistem harus mampu menangani broadcast ke 500+ 
+pendonor secara simultan tanpa degradasi performa. 
+Implementasi FCM message batching dan queue worker 
+(BullMQ/Redis). 
+Reliability 
+Database Failover 
+SQL database menggunakan konfigurasi Primary-
+Replica dengan automatic failover ≤ 30 detik. NoSQL 
+Firestore menyediakan built-in HA. 
+Scalability 
+Horizontal Scaling 
+Backend dirancang stateless (12-factor app) sehingga 
+dapat di-scale horizontal melalui container orchestration 
+(Docker + Kubernetes / Cloud Run). 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+Kategori 
+Sub-Kategori 
+Requirement 
+Privacy 
+Kepatuhan Data 
+Aplikasi mematuhi UU PDP (Perlindungan Data Pribadi) 
+Indonesia. Data pendonor tidak boleh dibagikan ke pihak 
+ketiga tanpa persetujuan eksplisit. Admin hanya dapat 
+melihat data yang diperlukan untuk fungsi operasional. 
+Privacy 
+Data Retention 
+Log live_responses dihapus dari NoSQL setelah 
+broadcast ditutup > 30 hari. Data medis di SQL disimpan 
+selama 5 tahun sesuai regulasi rekam medis Indonesia. 
+Usability 
+Mobile Accessibility 
+Aplikasi mobile mendukung mode aksesibilitas (font 
+besar, high contrast) untuk pendonor dengan 
+keterbatasan penglihatan. Tombol aksi utama minimal 
+48x48dp. 
+Usability 
+Cross-Platform 
+Mobile App mendukung Android 8.0+ (API 26+) dan iOS 
+13+. Web App mendukung Chrome 90+, Firefox 88+, 
+Edge 90+, Safari 14+. 
+ 
+ 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+7. KPIs & Success Metrics 
+ 
+Success metrics ini dirancang untuk mengukur dampak nyata aplikasi di lapangan, bukan 
+sekadar metrik vanity. Setiap KPI terhubung langsung ke masalah yang ingin diselesaikan. 
+ 
+KPI 
+Target v1.0 (6 bulan) 
+Cara Pengukuran 
+Kategori 
+Waktu Respons 
+Broadcast 
+≤ 5 detik dari broadcast ke 
+notif diterima 
+Logging timestamp: 
+broadcast_at vs FCM 
+delivered_at 
+Performance 
+Response Rate 
+Donor 
+≥ 40% dari donor yang 
+dinotifikasi merespons 
+dalam 30 menit pertama 
+live_responses count / 
+eligible_donor_ids count 
+Engagement 
+Tingkat Hadir Donor 
+≥ 60% dari donor yang 
+merespons ACCEPTED 
+benar-benar hadir 
+(CHECKED_IN) 
+checkedin_count / 
+accepted_count per 
+broadcast 
+Reliability 
+Waktu Check-in QR 
+≤ 2 menit dari donor tiba 
+hingga check-in selesai 
+Observasi lapangan + 
+timestamp CHECKED_IN 
+- response_at 
+Usability 
+Waktu Resolusi 
+Darurat 
+≤ 45 menit dari broadcast 
+hingga kebutuhan darah 
+terpenuhi 
+fulfilled_at - 
+broadcast_created_at di 
+SQL 
+Operational 
+Pertumbuhan Donor 
+Aktif 
++200 pendonor baru 
+terdaftar/bulan di 3 bulan 
+pertama 
+COUNT(users) WHERE 
+created_at >= last_month 
+Growth 
+Retensi Pendonor 
+≥ 70% pendonor yang 
+pernah donor minimal 1x 
+kembali donor dalam 6 
+bulan 
+Cohort analysis riwayat 
+donasi 
+Retention 
+Uptime Sistem 
+≥ 99.5% monthly uptime 
+Monitoring via 
+UptimeRobot / Cloud 
+Monitoring 
+Reliability 
+Kekritisan Stok 
+Berkurang 
+Penurunan 30% frekuensi 
+stok KRITIS dalam 6 bulan 
+pertama 
+Tracking status 
+blood_stock per minggu 
+Impact 
+Kepuasan Admin 
+PMI 
+NPS ≥ 50 dari survey admin 
+setelah 3 bulan 
+penggunaan 
+Survey bulanan via in-app 
+atau Google Form 
+Satisfaction 
+Share Rate Notifikasi 
+≥ 10% penerima notifikasi 
+CRITICAL menekan tombol 
+share ke WhatsApp 
+Button click event 
+analytics 
+Virality 
+App Crash Rate 
+< 0.5% crash rate di Mobile 
+App 
+Firebase Crashlytics 
+Quality 
+ 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+7.1 Dashboard Success Metrics (Roadmap Review) 
+Evaluasi produk dilakukan setiap 4 minggu dengan agenda: 
+1. Review KPI dashboard – apakah target minggu ini tercapai? 
+2. Retrospektif atas emergency broadcast yang terjadi – apa yang bisa dioptimalkan? 
+3. User feedback synthesis dari admin PMI dan pendonor (rating in-app + laporan langsung). 
+4. Backlog grooming – fitur P2 mana yang naik prioritas berdasarkan data? 
+ 
+7.2 Definisi Go/No-Go untuk Production Launch 
+Aplikasi dinyatakan SIAP untuk pilot launch jika seluruh requirement P0 selesai, response time 
+push notification ≤ 5 detik dalam load testing dengan 100 concurrent users, dan tidak ada 
+critical bug yang belum terselesaikan selama 1 minggu sebelum launch. 
+ 
+ 
+ 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+8. Appendix – Referensi & Catatan Teknis 
+ 
+8.1 Tech Stack Rekomendasi 
+Layer 
+Teknologi 
+Catatan 
+Mobile App 
+Flutter 3.x (Dart) 
+Target: Android + iOS dari satu 
+codebase 
+Web Admin 
+React 18 + TypeScript 
+Vite sebagai bundler, Tailwind CSS 
+untuk styling 
+Backend API 
+Node.js (Express) atau Go 
+(Gin/Fiber) 
+RESTful API, JSON response 
+SQL Database 
+PostgreSQL 15 + PostGIS 
+Hosted: Supabase / Railway / 
+Cloud SQL 
+NoSQL Database 
+Google Cloud Firestore 
+Real-time listener, FCM terintegrasi 
+Push Notification 
+Firebase Cloud Messaging (FCM) 
+Cross-platform: Android + iOS 
+QR Code (Mobile) 
+qr_flutter package 
+Render lokal, no network required 
+QR Scanner (Web) 
+html5-qrcode / jsQR library 
+Browser-based, no native 
+dependency 
+Geospatial Query 
+PostGIS ST_DWithin() function 
+Lebih akurat dari Haversine manual 
+Enkripsi QR 
+AES-256-GCM 
+Key management via environment 
+variable / Secret Manager 
+Deployment 
+Docker + Cloud Run / Railway 
+Auto-scale, stateless containers 
+ 
+8.2 Glossary 
+• PMI: Palang Merah Indonesia – organisasi yang mengelola bank darah di Indonesia. 
+• PRC (Packed Red Cells): Komponen darah merah yang paling umum ditransfusikan. 
+• WB (Whole Blood): Darah lengkap sebelum diproses. 
+• FFP (Fresh Frozen Plasma): Komponen plasma darah. 
+• FCM (Firebase Cloud Messaging): Layanan push notification dari Google. 
+• UUID: Universally Unique Identifier – ID unik yang digunakan sebagai identifier pendonor dalam 
+QR Code. 
+• Geospatial Query: Query database yang melibatkan kalkulasi koordinat geografis dan jarak. 
+• NPS (Net Promoter Score): Metrik kepuasan pengguna skala -100 hingga +100. 
+ 
+8.3 Open Questions & Risk Register 
+
+---PAGE---
+PRD – Aplikasi Bank Darah v1.0 
+ 
+CONFIDENTIAL – INTERNAL USE ONLY 
+Halaman | Aplikasi Bank Darah © 2026 
+Pertanyaan / Risiko 
+Impact 
+Mitigasi 
+Bagaimana validasi golongan 
+darah saat registrasi tanpa 
+verifikasi lab? 
+HIGH – data golongan darah 
+salah bisa berbahaya 
+Wajibkan upload foto kartu 
+donor / hasil lab saat 
+onboarding, verifikasi manual 
+oleh admin PMI. 
+Donor yang merespons 
+ACCEPTED namun tidak hadir 
+tanpa kabar 
+MEDIUM – mengganggu 
+perencanaan admin 
+Implementasi reminder 
+notifikasi 15 menit sebelum 
+estimasi tiba + sistem penalti 
+(temporary suspend dari 
+broadcast) setelah 3x no-show. 
+Akurasi radius 10 KM 
+berdasarkan domisili statis 
+(bukan lokasi real-time) 
+MEDIUM – donor mungkin 
+sedang tidak di domisili saat 
+darurat 
+Scope v1.0 menggunakan 
+domisili statis. v1.2 dapat 
+menambahkan fitur opsional 
+share lokasi real-time saat 
+merespons. 
+Adopsi pendonor – bagaimana 
+meyakinkan pendonor untuk 
+install app? 
+HIGH – tanpa massa pendonor, 
+sistem tidak berguna 
+Kampanye via PMI existing, 
+barcode pendaftaran di lokasi 
+donor, reward gamifikasi, 
+endorsement dari RS mitra. 
+ 
+— Akhir Dokumen PRD v1.0 — Aplikasi Bank Darah — 
+
+---PAGE---

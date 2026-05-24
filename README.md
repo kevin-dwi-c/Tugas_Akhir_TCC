@@ -1,259 +1,114 @@
 # Aplikasi Bank Darah PMI
 
-Aplikasi Bank Darah PMI adalah web admin lokal untuk mengelola stok darah, permintaan darah darurat dari rumah sakit, daftar pendonor, check-in donor QR, dan monitoring respons donor. Project ini dibuat sebagai aplikasi demo tugas akhir TCC dengan frontend React + TypeScript dan backend mock REST API Node.js.
+Web admin Bank Darah PMI untuk mengelola stok darah, permintaan darurat dari rumah sakit, donor eligible radius 10 KM, broadcast, live response dashboard, QR check-in donor, data pendonor, rumah sakit mitra, dan laporan operasional.
 
-Project ini masih berjalan lokal. Belum ada konfigurasi hosting atau deployment cloud di repository ini.
+Backend sudah direfactor dari mock Node.js in-memory menjadi REST API Go dengan PostgreSQL/PostGIS sesuai PRD v1.0. Untuk kebutuhan demo lokal, data real-time `emergency_broadcasts` dan `live_responses` yang di PRD direkomendasikan di Firestore disimpan dulu di PostgreSQL agar seluruh stack bisa jalan lewat Docker.
 
-## Tujuan Aplikasi
-
-Aplikasi ini membantu petugas/admin PMI dalam simulasi alur operasional bank darah:
-
-- Melihat stok darah berdasarkan golongan darah dan jenis produk.
-- Menandai stok yang aman, menipis, atau kritis.
-- Membuat permintaan darah darurat dari rumah sakit.
-- Mencari donor eligible sesuai golongan darah dan radius simulasi.
-- Mengirim broadcast darurat ke donor eligible.
-- Memantau respons donor secara live.
-- Melakukan check-in donor dengan QR atau token manual.
-- Memverifikasi kondisi medis donor sebelum donor diterima.
-- Mengelola data pendonor dan rumah sakit mitra.
-- Melihat rekap/laporan operasional sederhana.
-
-## Teknologi
+## Stack
 
 Frontend:
 
-- React 18
-- TypeScript
+- React 18 + TypeScript
 - Vite
 - React Router
 - Zustand
 - Axios
 - Tailwind CSS
-- Lucide React
 - html5-qrcode
 
 Backend:
 
-- Node.js
-- Native HTTP server
-- REST API lokal dengan prefix `/api/v1`
-- Data mock in-memory
-- Struktur MVC sederhana
+- Go 1.22
+- Native `net/http`
+- PostgreSQL driver `pgx`
+- JWT HMAC untuk sesi admin
+- PostGIS untuk filter donor radius 10 KM
 
 Database:
 
-- Belum memakai database runtime.
-- Folder `backend/database/migrations` berisi rancangan awal skema SQL.
-- Data aplikasi saat ini berasal dari seed mock di backend dan akan kembali ke data awal saat server di-restart.
+- PostgreSQL 15 + PostGIS via Docker
+- Migrasi idempotent di `backend/database/migrations/001_init.sql`
+- Seed admin, rumah sakit, donor demo, stok darah, request demo, dan riwayat donasi
 
-## Struktur Folder
+## Menjalankan Dengan Docker
 
-```text
-tugas akhir praktikum/
-  README.md
-  .gitignore
-  index.js
-  backend/
-    package.json
-    server.js
-    Dockerfile
-    .env.example
-    database/
-      migrations/
-        001_init.sql
-    src/
-      app.js
-      config/
-        appConfig.js
-      controllers/
-        authController.js
-        donationController.js
-        donorController.js
-        emergencyController.js
-        healthController.js
-        hospitalController.js
-        stockController.js
-      models/
-        adminModel.js
-        dataStore.js
-        donationModel.js
-        donorFactory.js
-        donorModel.js
-        emergencyRequestModel.js
-        hospitalModel.js
-        stockModel.js
-      routes/
-        apiRoutes.js
-      utils/
-        date.js
-        httpResponse.js
-        id.js
-        requestBody.js
-  frontend/
-    package.json
-    package-lock.json
-    index.html
-    vite.config.ts
-    tsconfig.json
-    tailwind.config.js
-    postcss.config.js
-    Dockerfile
-    .env.example
-    src/
-      App.tsx
-      main.tsx
-      styles.css
-      controllers/
-        AppRoutes.tsx
-        bankDarahController.ts
-      models/
-        apiClient.ts
-        authStore.ts
-        status.ts
-        types.ts
-      views/
-        components/
-        layout/
-        pages/
+Pastikan Docker Desktop sudah aktif, lalu dari root project:
+
+```bash
+docker compose up --build
 ```
 
-## Pola MVC
+URL aplikasi:
 
-Backend memakai pola MVC agar kode lebih mudah dirawat:
+```text
+Frontend: http://127.0.0.1:5173
+Backend : http://127.0.0.1:8080/api/v1
+Postgres: localhost:5432
+```
 
-- `routes`: menentukan endpoint API dan mengarahkan request ke controller.
-- `controllers`: membaca request, memanggil model, lalu mengirim response.
-- `models`: menyimpan data mock dan fungsi domain seperti donor, stok, rumah sakit, emergency request, dan check-in.
-- `utils`: helper umum untuk response JSON, parsing body, tanggal, dan ID.
-- `config`: konfigurasi port, host, CORS, dan prefix API.
-
-Frontend juga disusun mendekati MVC:
-
-- `models`: tipe data, state auth, status helper, dan API client.
-- `controllers`: route aplikasi dan controller akses data.
-- `views`: tampilan halaman, layout, dan komponen UI.
-
-## Fitur Frontend
-
-### Login Admin
-
-Admin dapat login menggunakan akun demo:
+Login demo:
 
 ```text
 Username: operator
 Password: pmi123
 ```
 
-Setelah login, token mock disimpan di state frontend dan dikirim ke backend lewat header Authorization.
-
-### Dashboard
-
-Dashboard menampilkan:
-
-- Total kantong darah.
-- Jumlah stok kritis.
-- Jumlah stok menipis.
-- Jumlah request aktif.
-- Kartu stok per golongan darah.
-- Tabel permintaan darah terbaru.
-
-### Permintaan Darurat
-
-Admin dapat membuat request darah darurat dengan data:
-
-- Nama rumah sakit.
-- Nama PIC.
-- Nomor kontak.
-- Golongan darah.
-- Jenis produk darah.
-- Jumlah kantong.
-- Tingkat urgensi.
-- Catatan kebutuhan.
-
-Setelah request dibuat, aplikasi menampilkan daftar donor eligible.
-
-### Broadcast Donor
-
-Halaman broadcast menampilkan donor yang cocok berdasarkan:
-
-- Golongan darah.
-- Status eligible.
-- Status akun aktif.
-- Radius simulasi maksimal 10 KM.
-
-Backend mock menerapkan rate limit broadcast 10 kali per menit.
-
-### Monitor Respons
-
-Halaman monitor menampilkan respons donor secara otomatis setiap beberapa detik:
-
-- Siap donor.
-- Menuju PMI.
-- Check-in.
-- Tidak bisa.
-
-Data respons masih berupa simulasi dari backend mock.
-
-### Check-in QR Donor
-
-Check-in donor dapat dilakukan dengan kamera QR scanner atau token manual.
-
-Token demo:
+Token QR demo untuk check-in manual:
 
 ```text
 QR-DEMO-001
 ```
 
-Setelah donor ditemukan, admin dapat mengisi verifikasi medis:
+## Menjalankan Manual
 
-- Sistolik.
-- Diastolik.
-- Hemoglobin.
-- Berat badan.
-- Referensi request.
+Jalankan PostgreSQL/PostGIS sendiri atau gunakan service database dari compose:
 
-Backend akan menentukan apakah donor lolos berdasarkan aturan sederhana.
-
-### Manajemen Pendonor
-
-Halaman pendonor menyediakan:
-
-- Pencarian donor.
-- Tambah donor.
-- Lihat detail donor.
-- Aktif/nonaktifkan donor.
-- Riwayat donasi donor.
-
-### Manajemen Rumah Sakit
-
-Halaman rumah sakit menyediakan:
-
-- Daftar rumah sakit mitra.
-- Tambah rumah sakit.
-- Informasi PIC rumah sakit.
-- Status rumah sakit aktif/nonaktif.
-
-### Laporan
-
-Halaman laporan menampilkan rekap sederhana:
-
-- Total stok.
-- Stok kritis.
-- Request aktif.
-- Donor eligible.
-- Tabel permintaan darurat.
-- Tabel ringkasan stok.
-
-## Endpoint Backend Lokal
-
-Base URL backend:
-
-```text
-http://127.0.0.1:8080/api/v1
+```bash
+docker compose up postgres
 ```
 
-Endpoint utama:
+Backend:
+
+```bash
+cd backend
+go run ./cmd/api
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Vite sudah mem-proxy `/api` ke `http://127.0.0.1:8080`.
+
+## Environment Backend
+
+Contoh konfigurasi ada di `backend/.env.example`.
+
+```text
+PORT=8080
+DATABASE_URL=postgres://bank_darah:bank_darah@127.0.0.1:5432/bank_darah?sslmode=disable
+JWT_SECRET=replace-with-long-random-secret
+AUTH_REQUIRED=true
+PMI_NAME=PMI Kota Yogyakarta
+PMI_LOCATION=UDD PMI Kota Yogyakarta
+PMI_LATITUDE=-7.7839
+PMI_LONGITUDE=110.3798
+ELIGIBLE_RADIUS_KM=10
+```
+
+## Endpoint Utama
+
+Base URL:
+
+```text
+/api/v1
+```
+
+Endpoint:
 
 ```text
 GET    /health
@@ -267,7 +122,7 @@ POST   /emergency/requests/:id/broadcast
 GET    /emergency/requests/:id/live-responses
 GET    /donors
 POST   /donors
-GET    /donors/:idOrUuid
+GET    /donors/:idOrQrToken
 PUT    /donors/:id
 PUT    /donors/:id/status
 POST   /donations/checkin
@@ -276,7 +131,7 @@ POST   /hospitals
 PUT    /hospitals/:id
 ```
 
-Semua response API memakai format umum:
+Semua response memakai envelope:
 
 ```json
 {
@@ -285,7 +140,7 @@ Semua response API memakai format umum:
 }
 ```
 
-Jika error:
+Error:
 
 ```json
 {
@@ -295,117 +150,24 @@ Jika error:
 }
 ```
 
-## Cara Menjalankan Project
+## Kesesuaian PRD v1.0
 
-Pastikan Node.js dan npm sudah terpasang.
+Sudah dicakup:
 
-Install dependency frontend dari folder root project:
+- FR-A01 dashboard stok darah per golongan dan produk
+- FR-A02 input permintaan darurat RS
+- FR-A03 filter donor eligible berdasarkan golongan, status, dan radius PostGIS 10 KM
+- FR-A04 broadcast darurat dengan rate limit 10 request/menit per admin
+- FR-A05 live response dashboard berbasis tabel `live_responses`
+- FR-A06 QR check-in donor via token QR
+- FR-A07 verifikasi kelaikan medis sederhana
+- FR-A08 transaksi tambah/kurang/set stok darah
+- FR-A09 CRUD dasar pendonor
+- FR-A10 CRUD dasar rumah sakit
+- FR-A11 laporan operasional dari data request/stok/donor
 
-```bash
-cd frontend
-npm install
-```
+Catatan:
 
-Kembali ke root lalu install dependency backend. Backend saat ini tidak membutuhkan dependency tambahan, tetapi command ini aman dijalankan jika nanti dependency backend ditambahkan:
-
-```bash
-cd ..
-cd backend
-npm install
-```
-
-Kembali ke folder root project:
-
-```bash
-cd ..
-```
-
-Jalankan backend dan frontend sekaligus:
-
-```bash
-node index.js
-```
-
-URL aplikasi:
-
-```text
-Frontend: http://127.0.0.1:5173
-Backend : http://127.0.0.1:8080/api/v1
-```
-
-## Cara Menjalankan Manual
-
-Terminal 1 untuk backend:
-
-```bash
-cd backend
-npm run dev
-```
-
-Terminal 2 untuk frontend:
-
-```bash
-cd frontend
-npm run dev
-```
-
-Buka frontend di browser:
-
-```text
-http://127.0.0.1:5173
-```
-
-## Build Frontend
-
-Untuk mengecek apakah frontend siap di-build:
-
-```bash
-cd frontend
-npm run build
-```
-
-Hasil build akan masuk ke folder:
-
-```text
-frontend/dist
-```
-
-Folder `dist` tidak perlu dipush ke GitHub karena bisa dibuat ulang dari source.
-
-## File yang Tidak Dipush
-
-Repository memakai `.gitignore` agar file lokal/generated tidak ikut ke GitHub:
-
-- `node_modules/`
-- `dist/`
-- `build/`
-- `coverage/`
-- `.env`
-- file log
-- cache
-- `*.tsbuildinfo`
-- PDF lokal di folder `requirements/`
-
-Catatan: `node_modules` tetap boleh ada di komputer lokal untuk menjalankan aplikasi, tetapi tidak perlu dipush karena ukurannya besar dan bisa dibuat ulang dengan `npm install`.
-
-## Catatan Pengembangan
-
-Project ini masih versi lokal/demo. Beberapa hal yang perlu diperhatikan:
-
-- Data backend masih in-memory, jadi data berubah akan hilang saat server restart.
-- Belum ada autentikasi produksi.
-- Token login masih mock.
-- Broadcast donor masih simulasi.
-- Live response donor masih simulasi.
-- Database SQL belum dihubungkan ke backend runtime.
-- Belum ada hosting/deployment cloud.
-
-## Rekomendasi Pengembangan Berikutnya
-
-- Hubungkan backend ke database sungguhan.
-- Tambahkan validasi request yang lebih ketat.
-- Tambahkan autentikasi dan otorisasi produksi.
-- Tambahkan fitur edit/hapus untuk data donor dan rumah sakit.
-- Tambahkan riwayat transaksi stok yang bisa dilihat dari frontend.
-- Tambahkan test backend dan frontend.
-- Tambahkan konfigurasi deployment setelah aplikasi siap dihosting.
+- Push notification FCM dan Firestore real-time listener belum diaktifkan; backend menyimpan broadcast dan live response di PostgreSQL sebagai adapter lokal.
+- QR token demo belum memakai AES-256-GCM end-to-end mobile karena aplikasi mobile Flutter belum ada di repo ini.
+- Field medis sensitif siap dipusatkan di `donation_history`; enkripsi field-level bisa ditambahkan saat key management produksi sudah ditentukan.
