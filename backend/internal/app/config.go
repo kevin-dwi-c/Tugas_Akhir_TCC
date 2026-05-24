@@ -19,6 +19,7 @@ type Config struct {
 	TokenTTL              time.Duration
 	SchedulerInterval     time.Duration
 	QREncryptionKey       string
+	DemoMode              bool
 	FCMProjectID          string
 	FCMServiceAccountPath string
 }
@@ -37,6 +38,7 @@ func LoadConfig() Config {
 		TokenTTL:              8 * time.Hour,
 		SchedulerInterval:     time.Duration(envInt("SCHEDULER_INTERVAL_HOURS", 1)) * time.Hour,
 		QREncryptionKey:       env("QR_ENCRYPTION_KEY", ""),
+		DemoMode:              env("DEMO_MODE", "false") == "true",
 		FCMProjectID:          env("FCM_PROJECT_ID", ""),
 		FCMServiceAccountPath: env("FCM_SERVICE_ACCOUNT_PATH", ""),
 	}

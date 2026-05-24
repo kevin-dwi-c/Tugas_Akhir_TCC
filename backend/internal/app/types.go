@@ -88,6 +88,11 @@ type LiveResponse struct {
 	RespondedAt time.Time `json:"respondedAt"`
 }
 
+type MobileActiveBroadcast struct {
+	Broadcast EmergencyRequest `json:"broadcast"`
+	Response  LiveResponse     `json:"response"`
+}
+
 type BroadcastResult struct {
 	BroadcastID    string    `json:"broadcastId"`
 	RecipientCount int       `json:"recipientCount"`
@@ -97,6 +102,12 @@ type BroadcastResult struct {
 type LoginRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+}
+
+type MobileRespondRequest struct {
+	QRToken     string `json:"qr_token"`
+	BroadcastID string `json:"broadcast_id"`
+	Status      string `json:"status"`
 }
 
 type StockUpdateRequest struct {
@@ -128,7 +139,7 @@ type DonorCreateRequest struct {
 	Address     string  `json:"address"`
 	Latitude    float64 `json:"latitude"`
 	Longitude   float64 `json:"longitude"`
-	DeviceToken string `json:"deviceToken"`
+	DeviceToken string  `json:"deviceToken"`
 }
 
 type DonorUpdateRequest struct {

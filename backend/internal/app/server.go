@@ -17,6 +17,7 @@ type App struct {
 	logger  *slog.Logger
 	fcm     *FCMClient
 	limiter *broadcastLimiter
+	mobile  *broadcastLimiter
 }
 
 func New(cfg Config, store *Store, logger *slog.Logger, fcm *FCMClient) *App {
@@ -26,6 +27,7 @@ func New(cfg Config, store *Store, logger *slog.Logger, fcm *FCMClient) *App {
 		logger:  logger,
 		fcm:     fcm,
 		limiter: newBroadcastLimiter(10, time.Minute),
+		mobile:  newBroadcastLimiter(5, time.Minute),
 	}
 }
 
@@ -58,6 +60,10 @@ func (a *App) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		a.handleLogin(w, r)
 		return
 	}
+	if strings.HasPrefix(path, "/mobile") {
+		a.routeMobile(w, r, path)
+		return
+	}
 
 	if a.cfg.AuthRequired {
 		admin, err := parseToken(a.cfg.JWTSecret, bearerToken(r))
@@ -69,6 +75,17 @@ func (a *App) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	a.routeProtected(w, r, path)
+}
+
+func (a *App) routeMobile(w http.ResponseWriter, r *http.Request, path string) {
+	switch {
+	case r.Method == http.MethodPost && path == "/mobile/respond":
+		a.handleMobileRespond(w, r)
+	case r.Method == http.MethodGet && path == "/mobile/broadcast/active":
+		a.handleMobileActiveBroadcast(w, r)
+	default:
+		fail(w, http.StatusNotFound, "NOT_FOUND", "Endpoint tidak ditemukan.")
+	}
 }
 
 func (a *App) routeProtected(w http.ResponseWriter, r *http.Request, path string) {
@@ -164,6 +181,44 @@ func (a *App) handleLogin(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   int(a.cfg.TokenTTL.Seconds()),
 	})
 	ok(w, map[string]interface{}{"token": token, "user": admin}, http.StatusOK)
+}
+
+func (a *App) handleMobileRespond(w http.ResponseWriter, r *http.Request) {
+	var input MobileRespondRequest
+	if err := decodeJSON(r, &input); err != nil {
+		fail(w, http.StatusBadRequest, "BAD_REQUEST", "Body respons donor tidak valid.")
+		return
+	}
+	if strings.TrimSpace(input.QRToken) == "" || strings.TrimSpace(input.BroadcastID) == "" || strings.TrimSpace(input.Status) == "" {
+		fail(w, http.StatusBadRequest, "BAD_REQUEST", "qr_token, broadcast_id, dan status wajib diisi.")
+		return
+	}
+	if !a.mobile.Allow(strings.TrimSpace(input.QRToken)) {
+		fail(w, http.StatusTooManyRequests, "RATE_LIMITED", "Respons terlalu sering. Coba lagi sebentar.")
+		return
+	}
+
+	response, err := a.store.RespondToBroadcast(r.Context(), input.QRToken, input.BroadcastID, input.Status)
+	a.respond(w, response, err, http.StatusOK)
+}
+
+func (a *App) handleMobileActiveBroadcast(w http.ResponseWriter, r *http.Request) {
+	qrToken := strings.TrimSpace(r.URL.Query().Get("qr_token"))
+	if qrToken == "" {
+		fail(w, http.StatusBadRequest, "BAD_REQUEST", "qr_token wajib diisi.")
+		return
+	}
+
+	active, found, err := a.store.ActiveBroadcastForDonor(r.Context(), qrToken)
+	if err != nil {
+		a.respond(w, nil, err, http.StatusOK)
+		return
+	}
+	if !found {
+		ok(w, map[string]interface{}{"broadcast": nil, "response": nil}, http.StatusOK)
+		return
+	}
+	ok(w, active, http.StatusOK)
 }
 
 func (a *App) handleMe(w http.ResponseWriter, r *http.Request) {

@@ -497,8 +497,10 @@ func (s *Store) ExpireBroadcasts(ctx context.Context) (int64, error) {
 }
 
 func (s *Store) ListLiveResponses(ctx context.Context, requestID string) ([]LiveResponse, error) {
-	if err := s.advanceLiveResponses(ctx, requestID); err != nil {
-		return nil, err
+	if s.cfg.DemoMode {
+		if err := s.advanceLiveResponses(ctx, requestID); err != nil {
+			return nil, err
+		}
 	}
 
 	rows, err := s.pool.Query(ctx, `
@@ -531,6 +533,108 @@ func (s *Store) ListLiveResponses(ctx context.Context, requestID string) ([]Live
 		responses = append(responses, response)
 	}
 	return responses, rows.Err()
+}
+
+func (s *Store) RespondToBroadcast(ctx context.Context, qrToken, broadcastID, status string) (LiveResponse, error) {
+	qrToken = strings.TrimSpace(qrToken)
+	broadcastID = strings.TrimSpace(broadcastID)
+	status = strings.ToUpper(strings.TrimSpace(status))
+	if qrToken == "" || broadcastID == "" || status == "" {
+		return LiveResponse{}, errBadRequest("qr_token, broadcast_id, dan status wajib diisi")
+	}
+	if !validMobileResponseStatus(status) {
+		return LiveResponse{}, errBadRequest("status respons tidak valid")
+	}
+
+	donor, err := s.activeDonorByQRToken(ctx, qrToken)
+	if err != nil {
+		return LiveResponse{}, err
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return LiveResponse{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	var requestID string
+	err = tx.QueryRow(ctx, `
+		SELECT request_id::TEXT
+		FROM emergency_broadcasts
+		WHERE broadcast_id = $1 AND status = 'ACTIVE'
+	`, broadcastID).Scan(&requestID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return LiveResponse{}, errBadRequest("broadcast tidak aktif atau tidak ditemukan")
+	}
+	if err != nil {
+		return LiveResponse{}, err
+	}
+
+	var currentStatus string
+	err = tx.QueryRow(ctx, `
+		SELECT status::TEXT
+		FROM live_responses
+		WHERE broadcast_id = $1 AND donor_id::TEXT = $2
+		FOR UPDATE
+	`, broadcastID, donor.ID).Scan(&currentStatus)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return LiveResponse{}, errBadRequest("pendonor tidak termasuk daftar broadcast")
+	}
+	if err != nil {
+		return LiveResponse{}, err
+	}
+	if !validMobileStatusTransition(currentStatus, status) {
+		return LiveResponse{}, errBadRequest("transisi status respons tidak valid")
+	}
+
+	response, err := scanLiveResponse(tx.QueryRow(ctx, `
+		UPDATE live_responses
+		SET status = $3, response_at = NOW()
+		WHERE broadcast_id = $1 AND donor_id::TEXT = $2
+		RETURNING id::TEXT, broadcast_id, donor_id::TEXT, donor_name, donor_blood,
+		          distance_km::DOUBLE PRECISION, status::TEXT, COALESCE(response_at, created_at)
+	`, broadcastID, donor.ID, status))
+	if err != nil {
+		return LiveResponse{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return LiveResponse{}, err
+	}
+
+	if err := s.refreshBroadcastSummary(ctx, requestID); err != nil {
+		slog.Default().Error("refresh broadcast summary after mobile response", "broadcast_id", broadcastID, "request_id", requestID, "error", err)
+	}
+
+	return response, nil
+}
+
+func (s *Store) ActiveBroadcastForDonor(ctx context.Context, qrToken string) (MobileActiveBroadcast, bool, error) {
+	donor, err := s.activeDonorByQRToken(ctx, qrToken)
+	if err != nil {
+		return MobileActiveBroadcast{}, false, err
+	}
+
+	request, err := scanRequest(s.pool.QueryRow(ctx, requestSelectSQL()+`
+		JOIN emergency_broadcasts eb ON eb.broadcast_id = br.broadcast_id
+		JOIN live_responses lr ON lr.broadcast_id = eb.broadcast_id AND lr.request_id = br.id
+		WHERE eb.status = 'ACTIVE' AND lr.donor_id::TEXT = $1
+		ORDER BY eb.created_at DESC
+		LIMIT 1
+	`, donor.ID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return MobileActiveBroadcast{}, false, nil
+	}
+	if err != nil {
+		return MobileActiveBroadcast{}, false, err
+	}
+
+	response, err := s.liveResponseForDonor(ctx, request.BroadcastID, donor.ID)
+	if err != nil {
+		return MobileActiveBroadcast{}, false, err
+	}
+
+	return MobileActiveBroadcast{Broadcast: request, Response: response}, true, nil
 }
 
 func (s *Store) ListDonors(ctx context.Context, search string) ([]Donor, error) {
@@ -628,6 +732,24 @@ func (s *Store) CreateDonor(ctx context.Context, input DonorCreateRequest) (Dono
 		return Donor{}, err
 	}
 	return s.GetDonor(ctx, id)
+}
+
+func (s *Store) activeDonorByQRToken(ctx context.Context, qrToken string) (Donor, error) {
+	trimmed := strings.TrimSpace(qrToken)
+	if trimmed == "" {
+		return Donor{}, errBadRequest("qr_token wajib diisi")
+	}
+
+	lookupKey := s.decryptQRLookupKey(trimmed)
+	donor, err := scanDonor(s.pool.QueryRow(ctx, donorSelectSQL()+`
+		WHERE (u.id::TEXT = $3 OR u.qr_token = $4 OR u.qr_token = $5)
+		  AND u.is_active = TRUE
+		LIMIT 1
+	`, s.cfg.PMILongitude, s.cfg.PMILatitude, lookupKey, trimmed, prefixedQRToken(trimmed)))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Donor{}, errNotFound("token donor tidak valid")
+	}
+	return donor, err
 }
 
 func (s *Store) ReencryptQRTokens(ctx context.Context, logger *slog.Logger) (int64, error) {
@@ -1041,6 +1163,35 @@ func scanDonor(row pgx.Row) (Donor, error) {
 	return donor, err
 }
 
+func scanLiveResponse(row pgx.Row) (LiveResponse, error) {
+	var response LiveResponse
+	err := row.Scan(
+		&response.ID,
+		&response.BroadcastID,
+		&response.DonorID,
+		&response.DonorName,
+		&response.BloodType,
+		&response.DistanceKm,
+		&response.Status,
+		&response.RespondedAt,
+	)
+	return response, err
+}
+
+func (s *Store) liveResponseForDonor(ctx context.Context, broadcastID, donorID string) (LiveResponse, error) {
+	response, err := scanLiveResponse(s.pool.QueryRow(ctx, `
+		SELECT id::TEXT, broadcast_id, donor_id::TEXT, donor_name, donor_blood,
+		       distance_km::DOUBLE PRECISION, status::TEXT, COALESCE(response_at, created_at)
+		FROM live_responses
+		WHERE broadcast_id = $1 AND donor_id::TEXT = $2
+		LIMIT 1
+	`, broadcastID, donorID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return LiveResponse{}, errBadRequest("pendonor tidak termasuk daftar broadcast")
+	}
+	return response, err
+}
+
 func requestSelectSQL() string {
 	return `
 		SELECT br.id::TEXT,
@@ -1149,6 +1300,21 @@ func errBadRequest(message string) error {
 
 func errNotFound(message string) error {
 	return appError{status: 404, code: "NOT_FOUND", message: message}
+}
+
+func validMobileResponseStatus(status string) bool {
+	return status == "ACCEPTED" || status == "DECLINED" || status == "ON_THE_WAY"
+}
+
+func validMobileStatusTransition(current, next string) bool {
+	switch current {
+	case "NO_RESPONSE":
+		return next == "ACCEPTED" || next == "DECLINED"
+	case "ACCEPTED":
+		return next == "ON_THE_WAY"
+	default:
+		return false
+	}
 }
 
 func (s *Store) encryptQRToken(userID string) (string, error) {
